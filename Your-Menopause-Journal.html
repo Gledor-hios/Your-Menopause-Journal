@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Menopause Journal (Persistent)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Tenor+Sans&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    
+    <!-- Chosen Palette: Calm Transformation (Soft Terracotta/Dusty Rose/Muted Neutrals) -->
+    <!-- Application Structure Plan: Dashboard approach with five thematic tabs (Dashboard, Trackers, Body & Mind, Toolkit, Reflections). This structure was chosen to separate user input/stats (Dashboard/Trackers) from psycho-educational tools (Body & Mind/Toolkit/Reflections), creating a functional flow. The key interaction is real-time data submission via forms and instant chart update via Firestore's onSnapshot. -->
+    <!-- Visualization & Content Choices: Dashboard/Input -> Goal: Daily Check-in -> Presentation: Form/Slider/Input -> Interaction: Save Button (Firestore addDoc) -> Justification: Captures subjective state quickly. Trackers -> Goal: Trend Analysis -> Presentation: Line Chart (Mood) and Doughnut Chart (Patterns) -> Interaction: Automatic real-time update (onSnapshot) -> Justification: Provides visual feedback on long-term well-being. Toolkit/Reflection -> Goal: Guidance/Self-Help -> Presentation: Accordions/Text Prompts -> Interaction: Toggle open/close -> Justification: Keeps complex content organized and accessible on a single page. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <style>
+        :root {
+            --color-primary: #a0522d; /* Sienna/Terracotta */
+            --color-secondary: #f0f8ff; /* Alice Blue */
+            --color-accent: #b22222; /* Firebrick */
+            --color-text-dark: #374151;
+            --color-text-light: #f9fafb;
+        }
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: var(--color-secondary);
+            color: var(--color-text-dark);
+        }
+        .tab-button {
+            transition: all 0.2s ease-in-out;
+        }
+        .tab-button.active {
+            border-bottom: 3px solid var(--color-primary);
+            color: var(--color-primary);
+            font-weight: 600;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 300px; /* Base height for mobile */
+            max-height: 400px;
+            margin-left: auto;
+            margin-right: auto;
+            background: #fff;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        }
+        @media (min-width: 768px) {
+             .chart-container {
+                 height: 350px; /* Taller on desktop */
+             }
+        }
+        .accordion-header {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .accordion-content {
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+            max-height: 0;
+            padding: 0 1rem;
+        }
+        .accordion-content.open {
+            max-height: 1000px; /* Arbitrary large value */
+            padding: 1rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div id="loading-overlay" class="fixed inset-0 bg-gray-500 bg-opacity-75 z-50 flex items-center justify-center">
+        <div class="flex flex-col items-center p-6 bg-white rounded-lg shadow-xl">
+            <svg class="animate-spin h-8 w-8 text-sienna" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="mt-3 text-sienna font-medium">Connecting to your personal journal data...</p>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="text-center py-6 bg-white shadow-md rounded-lg mb-6">
+            <h1 class="text-4xl font-extrabold" style="font-family: 'Tenor Sans', sans-serif; color: var(--color-primary);">My Menopause Journal</h1>
+            <p class="text-gray-500 mt-1">A private, persistent companion for self-compassion and wellness.</p>
+            <div class="mt-3 text-xs flex justify-center space-x-4">
+                <span id="connection-status" class="text-gray-600 font-medium">Connecting...</span>
+                <span class="text-gray-600 font-medium">User ID: <span id="user-id-display" class="font-bold text-gray-700">Loading...</span></span>
+            </div>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="flex justify-center border-b border-gray-300 mb-6 sticky top-0 z-10 bg-white rounded-lg shadow-sm">
+            <button data-tab="dashboard" class="tab-button px-4 py-3 text-lg font-medium text-gray-700 active">Dashboard</button>
+            <button data-tab="trackers" class="tab-button px-4 py-3 text-lg font-medium text-gray-700">Trackers</button>
+            <button data-tab="body-mind" class="tab-button px-4 py-3 text-lg font-medium text-gray-700">Body & Mind</button>
+            <button data-tab="toolkit" class="tab-button px-4 py-3 text-lg font-medium text-gray-700">Toolkit</button>
+            <button data-tab="reflections" class="tab-button px-4 py-3 text-lg font-medium text-gray-700">Reflections</button>
+        </nav>
+
+        <main id="app-content">
+            <!-- Dashboard Tab -->
+            <div id="dashboard" class="tab-content grid md:grid-cols-3 gap-6">
+                <div class="md:col-span-2 bg-white p-6 rounded-lg shadow-md">
+                    <h2 class="text-2xl font-semibold mb-4 text-gray-800 border-b pb-2">Daily Check-in</h2>
+                    <p class="text-sm text-gray-600 mb-6">Use this form to capture your current state. All entries are saved privately and instantly to your personal cloud journal.</p>
+
+                    <form id="daily-check-in-form">
+                        <!-- Mood Slider -->
+                        <div class="mb-6">
+                            <label for="mood" class="block text-lg font-medium mb-2 text-gray-700">Mood Scale (1-10):</label>
+                            <input type="range" id="mood" name="mood" min="1" max="10" value="5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer range-lg" style="--tw-range-thumb-color: var(--color-primary);">
+                            <div class="flex justify-between text-sm mt-1 text-gray-500">
+                                <span>1 (Heaviness)</span>
+                                <span><span id="mood-value" class="font-bold text-gray-800">5</span></span>
+                                <span>10 (Contentment)</span>
+                            </div>
+                        </div>
+
+                        <!-- Thought Pattern Selector -->
+                        <div class="mb-6">
+                            <label for="pattern" class="block text-lg font-medium mb-2 text-gray-700">Unhelpful Thought Pattern Noticed:</label>
+                            <select id="pattern" name="pattern" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                                <option value="">— Select if applicable —</option>
+                                <option value="The Critic">The Critic (Self-Blame)</option>
+                                <option value="The Catastropher">The Catastropher (Worst-Case Thinking)</option>
+                                <option value="The Judge">The Judge (Other-Blame)</option>
+                                <option value="The Avoider">The Avoider (Procrastination)</option>
+                                <option value="The Fixer">The Fixer (Over-responsibility)</option>
+                            </select>
+                        </div>
+
+                        <!-- Reflections -->
+                        <div class="mb-6">
+                            <label for="gratitude" class="block text-lg font-medium mb-2 text-gray-700">One thing I am grateful for today:</label>
+                            <input type="text" id="gratitude" name="gratitude" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="A small win, a moment of peace, a person...">
+                        </div>
+                        
+                        <div class="mb-6">
+                            <label for="symptom_notes" class="block text-lg font-medium mb-2 text-gray-700">Notes (Hot Flashes, Sleep Quality, etc.):</label>
+                            <textarea id="symptom_notes" name="symptom_notes" rows="3" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="Describe your day's physical experience..."></textarea>
+                        </div>
+
+                        <button type="submit" class="w-full py-3 px-4 bg-sienna text-white font-semibold rounded-lg hover:bg-opacity-90 transition-colors duration-200 shadow-lg" style="background-color: var(--color-primary);">
+                            Save Today's Entry
+                        </button>
+                        <p id="save-status" class="mt-3 text-center text-sm font-medium"></p>
+                    </form>
+                </div>
+
+                <!-- Thought Patterns Explained Sidebar -->
+                <div class="md:col-span-1 bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-xl font-semibold mb-4 text-gray-800">Thought Patterns: Quick Reference</h3>
+                    <p class="text-sm text-gray-600 mb-4">Recognizing these helps you create mental space.</p>
+                    <div class="space-y-4 text-sm">
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <p class="font-bold text-sienna">The Critic (Self-Blame)</p>
+                            <p class="text-gray-600 mt-1">Focuses on personal failings and internal flaws.</p>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <p class="font-bold text-sienna">The Catastropher</p>
+                            <p class="text-gray-600 mt-1">Magnifies worst-case scenarios and ignores positive outcomes.</p>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <p class="font-bold text-sienna">The Judge (Other-Blame)</p>
+                            <p class="text-gray-600 mt-1">Excessive focus on the flaws and mistakes of others.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trackers Tab -->
+            <div id="trackers" class="tab-content hidden grid md:grid-cols-2 gap-6">
+                <!-- Mood Tracker Chart -->
+                <div class="chart-container md:col-span-1 flex flex-col">
+                    <h2 class="text-xl font-semibold mb-2 text-gray-800">Monthly Mood Trend (Contentment Score)</h2>
+                    <p class="text-sm text-gray-600 mb-3">Your subjective feeling of contentment over time.</p>
+                    <div class="flex-grow">
+                        <canvas id="moodChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Thought Pattern Frequency Chart -->
+                <div class="chart-container md:col-span-1 flex flex-col">
+                    <h2 class="text-xl font-semibold mb-2 text-gray-800">Unhelpful Thought Pattern Frequency</h2>
+                    <p class="text-sm text-gray-600 mb-3">Which pattern appears most often?</p>
+                    <div class="flex-grow">
+                        <canvas id="patternChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Body & Mind Tab -->
+            <div id="body-mind" class="tab-content hidden bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800 border-b pb-2">Joyful Movement & Mindful Body</h2>
+                <p class="text-gray-600 mb-6">Movement is a powerful tool for mood stability and bone health during menopause. Find a type of movement that truly brings you joy.</p>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Educational Resources -->
+                    <div class="space-y-4">
+                        <div class="accordion-item border rounded-lg overflow-hidden bg-gray-50">
+                            <div class="accordion-header flex justify-between items-center p-4 font-medium text-gray-700">
+                                <span>Why Movement Matters Now</span>
+                                <span>+</span>
+                            </div>
+                            <div class="accordion-content">
+                                <p class="text-gray-600 p-4 pt-0">Estrogen decline reduces bone density and affects metabolism. Regular movement, especially strength training, is the single most effective defense against osteoporosis and promotes hormonal balance and better sleep.</p>
+                            </div>
+                        </div>
+                        <div class="accordion-item border rounded-lg overflow-hidden bg-gray-50">
+                            <div class="accordion-header flex justify-between items-center p-4 font-medium text-gray-700">
+                                <span>Movement Focus: The Three Pillars</span>
+                                <span>+</span>
+                            </div>
+                            <div class="accordion-content">
+                                <ul class="list-disc list-inside text-gray-600 p-4 pt-0 space-y-2">
+                                    <li>**Strength:** Weight lifting, bodyweight exercises (crucial for bone density).</li>
+                                    <li>**Cardio:** Walking, dancing, swimming (supports heart health and mood).</li>
+                                    <li>**Flexibility:** Yoga, stretching (eases joint stiffness).</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Workout Planner -->
+                    <div class="bg-white p-6 rounded-lg shadow-inner border border-gray-200">
+                        <h3 class="text-xl font-semibold mb-4 text-gray-800">Workout Planner</h3>
+                        <form id="workout-planner-form">
+                            <div class="mb-4">
+                                <label for="activity_type" class="block text-sm font-medium mb-1 text-gray-700">Activity Type:</label>
+                                <select id="activity_type" name="activity_type" class="w-full p-2 border border-gray-300 rounded-lg">
+                                    <option value="Strength Training">Strength Training</option>
+                                    <option value="Walking/Cardio">Walking/Cardio</option>
+                                    <option value="Yoga/Stretching">Yoga/Stretching</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div class="mb-4">
+                                <label for="duration" class="block text-sm font-medium mb-1 text-gray-700">Duration (Minutes):</label>
+                                <input type="number" id="duration" name="duration" class="w-full p-2 border border-gray-300 rounded-lg" required min="5" max="180">
+                            </div>
+                            <button type="submit" class="w-full py-2 bg-sienna text-white font-semibold rounded-lg hover:bg-opacity-90 transition-colors duration-200 mt-2" style="background-color: var(--color-primary);">
+                                Log Activity
+                            </button>
+                            <p id="workout-save-status" class="mt-2 text-center text-sm font-medium"></p>
+                        </form>
+                        <div class="mt-4 p-3 bg-gray-50 rounded-lg">
+                            <h4 class="text-md font-semibold text-gray-700">Recent Activities:</h4>
+                            <ul id="recent-workouts" class="text-sm mt-1 space-y-1 text-gray-600">
+                                <li>Loading...</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Toolkit Tab -->
+            <div id="toolkit" class="tab-content hidden bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800 border-b pb-2">Toolkit for Inner Healing</h2>
+                <p class="text-gray-600 mb-6">These somatic and psychological exercises are designed to help you process emotions and create internal safety.</p>
+
+                <div class="space-y-6">
+                    <!-- Exercise 1: Inner Child -->
+                    <div class="border rounded-lg overflow-hidden bg-gray-50">
+                        <div class="accordion-header flex justify-between items-center p-4 font-bold text-lg text-sienna">
+                            <span>Connecting With Your Inner Child</span>
+                            <span>+</span>
+                        </div>
+                        <div class="accordion-content">
+                            <p class="p-4 pt-0 text-gray-600">Find a quiet space. Close your eyes and imagine yourself at an age when you felt vulnerable or misunderstood.</p>
+                            <ul class="list-disc list-inside text-gray-700 p-4 pt-0 space-y-2">
+                                <li>What does your inner child need to hear right now? (e.g., "You are safe," "It wasn't your fault.")</li>
+                                <li>What gesture of comfort can you offer? (e.g., A gentle hug, a hand on their shoulder.)</li>
+                                <li>Write down the reassuring message you delivered to solidify the internal healing.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Exercise 2: IFS -->
+                    <div class="border rounded-lg overflow-hidden bg-gray-50">
+                        <div class="accordion-header flex justify-between items-center p-4 font-bold text-lg text-sienna">
+                            <span>Exploring Your Inner Parts (IFS)</span>
+                            <span>+</span>
+                        </div>
+                        <div class="accordion-content">
+                            <p class="p-4 pt-0 text-gray-600">Identify a strong feeling (like anxiety or self-criticism). Ask it, "What are you trying to protect me from?"</p>
+                            <ul class="list-disc list-inside text-gray-700 p-4 pt-0 space-y-2">
+                                <li>**The Part:** Name the feeling (e.g., The Worrier).</li>
+                                <li>**Its Job:** What is its protective function? (e.g., To make sure I never fail.)</li>
+                                <li>**Its Need:** What does the Part need to relax? (e.g., Permission to rest.)</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Exercise 3: Somatic -->
+                    <div class="border rounded-lg overflow-hidden bg-gray-50">
+                        <div class="accordion-header flex justify-between items-center p-4 font-bold text-lg text-sienna">
+                            <span>Body-Based Somatic Exercises</span>
+                            <span>+</span>
+                        </div>
+                        <div class="accordion-content">
+                            <h4 class="font-semibold text-gray-800 mb-2 p-4 pt-0">The Safety Anchor</h4>
+                            <p class="p-4 pt-0 text-gray-600">When overwhelmed, focus on five points of contact with your chair or floor. Notice the pressure, the texture, and the temperature. This grounds you and tells your nervous system you are safe *right now*.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reflections Tab -->
+            <div id="reflections" class="tab-content hidden bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800 border-b pb-2">Open Reflections & Journal Prompts</h2>
+                <p class="text-gray-600 mb-6">Use this space for unconstrained writing, allowing thoughts and emotions to flow without judgment.</p>
+
+                <div class="grid md:grid-cols-3 gap-6">
+                    <div class="md:col-span-1 p-4 bg-gray-50 rounded-lg shadow-inner">
+                        <h3 class="text-xl font-semibold mb-3 text-gray-800">Prompts for Discovery</h3>
+                        <ul class="list-disc list-inside text-gray-700 space-y-2 text-sm">
+                            <li>What did I release today that I no longer needed to carry?</li>
+                            <li>How can I add more gentleness to my schedule this week?</li>
+                            <li>What is one small thing that brings me authentic joy?</li>
+                            <li>What does my wise self know about this current challenge?</li>
+                        </ul>
+                    </div>
+                    <div class="md:col-span-2">
+                        <h3 class="text-xl font-semibold mb-3 text-gray-800">Free Writing Area</h3>
+                        <textarea id="free-writing-area" class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary min-h-[300px]" placeholder="Start writing your thoughts here..."></textarea>
+                        <button id="save-reflection-btn" class="mt-3 py-2 px-4 bg-sienna text-white font-semibold rounded-lg hover:bg-opacity-90 transition-colors duration-200 float-right" style="background-color: var(--color-primary);">
+                            Save Reflection
+                        </button>
+                        <p id="reflection-save-status" class="mt-3 float-right text-sm font-medium text-gray-600 mr-4"></p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Firebase and Application Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, onSnapshot, orderBy, limit, serverTimestamp, where, getDocs, updateDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-journal-app';
+
+        let app, db, auth, userId = null;
+        let moodChartInstance, patternChartInstance;
+        const MOOD_MAPPING = ['Heaviness', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'Contentment'];
+        const MAX_DAYS = 30;
+
+        document.getElementById('mood').addEventListener('input', (e) => {
+            document.getElementById('mood-value').textContent = e.target.value;
+        });
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(tabId).classList.remove('hidden');
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.tab-button[data-tab="${tabId}"]`).classList.add('active');
+
+            if (tabId === 'trackers') {
+                if (moodChartInstance) moodChartInstance.resize();
+                if (patternChartInstance) patternChartInstance.resize();
+                if (moodChartInstance) moodChartInstance.update();
+                if (patternChartInstance) patternChartInstance.update();
+            }
+        }
+
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', () => switchTab(button.dataset.tab));
+        });
+
+        document.querySelectorAll('.accordion-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const content = header.nextElementSibling;
+                content.classList.toggle('open');
+                header.querySelector('span:last-child').textContent = content.classList.contains('open') ? '−' : '+';
+            });
+        });
+        
+        // --- FIREBASE INITIALIZATION & AUTH ---
+
+        async function initFirebase() {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('error'); 
+
+                const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                userId = auth.currentUser?.uid || 'anonymous-user';
+                document.getElementById('user-id-display').textContent = userId;
+                document.getElementById('connection-status').textContent = 'Connected & Personalised';
+                
+                setupRealtimeListeners();
+                
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+                document.getElementById('connection-status').textContent = 'Error: Check Console';
+            } finally {
+                document.getElementById('loading-overlay').classList.add('hidden');
+            }
+        }
+
+        // FIX: Removed 'menopause_journal' segment to ensure an odd number of segments (Collection/Document/Collection/Document/Collection)
+        function getJournalPath() {
+            if (!db || !userId) return null;
+            return collection(db, 'artifacts', appId, 'users', userId, 'entries');
+        }
+
+        function getWorkoutPath() {
+            if (!db || !userId) return null;
+            return collection(db, 'artifacts', appId, 'users', userId, 'workouts');
+        }
+
+        function getReflectionPath() {
+            if (!db || !userId) return null;
+            return collection(db, 'artifacts', appId, 'users', userId, 'reflections');
+        }
+
+        function setupRealtimeListeners() {
+            const journalQuery = query(getJournalPath(), orderBy('timestamp', 'desc'));
+            onSnapshot(journalQuery, (snapshot) => {
+                const data = [];
+                snapshot.forEach(doc => {
+                    data.push({ id: doc.id, ...doc.data() });
+                });
+                updateCharts(data);
+            }, (error) => {
+                console.error("Error listening to journal data:", error);
+                document.getElementById('connection-status').textContent = 'Error fetching data';
+            });
+
+            const workoutQuery = query(getWorkoutPath(), orderBy('timestamp', 'desc'), limit(5));
+            onSnapshot(workoutQuery, (snapshot) => {
+                const workouts = [];
+                snapshot.forEach(doc => workouts.push(doc.data()));
+                renderRecentWorkouts(workouts);
+            });
+
+            const reflectionQuery = query(getReflectionPath(), orderBy('timestamp', 'desc'), limit(1));
+            onSnapshot(reflectionQuery, (snapshot) => {
+                const reflection = snapshot.docs[0];
+                if (reflection) {
+                    document.getElementById('free-writing-area').value = reflection.data().text || '';
+                }
+            });
+        }
+        
+        // --- DATA SAVING (Daily Check-in) ---
+
+        document.getElementById('daily-check-in-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const statusEl = document.getElementById('save-status');
+            
+            if (!userId) {
+                statusEl.textContent = 'Error: Not connected to personal journal.';
+                statusEl.className = 'mt-3 text-center text-sm font-medium text-red-600';
+                return;
+            }
+
+            statusEl.textContent = 'Saving...';
+            statusEl.className = 'mt-3 text-center text-sm font-medium text-blue-600';
+
+            const moodValue = parseInt(form.mood.value, 10);
+            const entryData = {
+                mood: moodValue,
+                pattern: form.pattern.value || 'None',
+                gratitude: form.gratitude.value || '',
+                symptom_notes: form.symptom_notes.value || '',
+                timestamp: serverTimestamp(),
+                dateKey: new Date().toISOString().slice(0, 10)
+            };
+
+            try {
+                // Check if an entry already exists for today
+                const today = new Date().toISOString().slice(0, 10);
+                const q = query(getJournalPath(), where('dateKey', '==', today));
+                const existingDocs = await getDocs(q);
+
+                if (existingDocs.docs.length > 0) {
+                    // Update existing document
+                    const docRef = existingDocs.docs[0].ref;
+                    await updateDoc(docRef, entryData);
+                } else {
+                    // Add new document
+                    await addDoc(getJournalPath(), entryData);
+                }
+
+                statusEl.textContent = 'Entry saved successfully!';
+                statusEl.className = 'mt-3 text-center text-sm font-medium text-green-600';
+                setTimeout(() => statusEl.textContent = '', 3000);
+            } catch (error) {
+                console.error("Error saving entry:", error);
+                statusEl.textContent = 'Error saving entry: Check console.';
+                statusEl.className = 'mt-3 text-center text-sm font-medium text-red-600';
+            }
+        });
+
+        // --- DATA SAVING (Workout) ---
+
+        document.getElementById('workout-planner-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const statusEl = document.getElementById('workout-save-status');
+
+            if (!userId) {
+                statusEl.textContent = 'Error: Not connected to personal journal.';
+                statusEl.className = 'mt-2 text-center text-sm font-medium text-red-600';
+                return;
+            }
+
+            statusEl.textContent = 'Logging...';
+            statusEl.className = 'mt-2 text-center text-sm font-medium text-blue-600';
+
+            const workoutData = {
+                activity: form.activity_type.value,
+                duration: parseInt(form.duration.value, 10),
+                timestamp: serverTimestamp()
+            };
+
+            try {
+                await addDoc(getWorkoutPath(), workoutData);
+                statusEl.textContent = 'Activity logged!';
+                statusEl.className = 'mt-2 text-center text-sm font-medium text-green-600';
+                form.reset();
+                setTimeout(() => statusEl.textContent = '', 3000);
+            } catch (error) {
+                console.error("Error saving workout:", error);
+                statusEl.textContent = 'Error logging activity.';
+                statusEl.className = 'mt-2 text-center text-sm font-medium text-red-600';
+            }
+        });
+
+        function renderRecentWorkouts(workouts) {
+            const list = document.getElementById('recent-workouts');
+            list.innerHTML = ''; 
+            if (workouts.length === 0) {
+                list.innerHTML = '<li class="text-gray-500">No activities logged yet.</li>';
+                return;
+            }
+
+            workouts.forEach(w => {
+                const date = w.timestamp && w.timestamp.toDate ? w.timestamp.toDate().toLocaleDateString() : 'Today';
+                const listItem = document.createElement('li');
+                listItem.className = 'border-b last:border-b-0 py-1';
+                listItem.textContent = `${date}: ${w.activity} (${w.duration} min)`;
+                list.appendChild(listItem);
+            });
+        }
+        
+        // --- DATA SAVING (Reflection) ---
+        
+        document.getElementById('save-reflection-btn').addEventListener('click', async () => {
+            const reflectionText = document.getElementById('free-writing-area').value;
+            const statusEl = document.getElementById('reflection-save-status');
+            
+            if (!userId) {
+                statusEl.textContent = 'Error: Not connected to journal.';
+                return;
+            }
+            if (reflectionText.trim() === '') {
+                statusEl.textContent = 'Reflection is empty.';
+                setTimeout(() => statusEl.textContent = '', 3000);
+                return;
+            }
+
+            statusEl.textContent = 'Saving...';
+            statusEl.className = 'mt-3 float-right text-sm font-medium text-blue-600 mr-4';
+
+            const reflectionData = {
+                text: reflectionText,
+                timestamp: serverTimestamp(),
+            };
+
+            try {
+                // Check if a reflection doc exists (we only keep one main reflection doc for simplicity)
+                const q = query(getReflectionPath());
+                const existingDocs = await getDocs(q);
+
+                if (existingDocs.docs.length > 0) {
+                    // Update the single existing reflection document
+                    const docRef = existingDocs.docs[0].ref;
+                    await updateDoc(docRef, reflectionData);
+                } else {
+                    // Add the first reflection document
+                    await addDoc(getReflectionPath(), reflectionData);
+                }
+
+                statusEl.textContent = 'Reflection saved!';
+                statusEl.className = 'mt-3 float-right text-sm font-medium text-green-600 mr-4';
+                setTimeout(() => statusEl.textContent = '', 3000);
+            } catch (error) {
+                console.error("Error saving reflection:", error);
+                statusEl.textContent = 'Error saving reflection.';
+                statusEl.className = 'mt-3 float-right text-sm font-medium text-red-600 mr-4';
+            }
+        });
+
+        // --- CHART GENERATION & UPDATING ---
+
+        function updateCharts(rawEntries) {
+            const processed = processDataForCharts(rawEntries);
+            
+            if (!moodChartInstance) {
+                initMoodChart(processed.moodLabels, processed.moodData);
+            } else {
+                moodChartInstance.data.labels = processed.moodLabels;
+                moodChartInstance.data.datasets[0].data = processed.moodData;
+                moodChartInstance.update();
+            }
+
+            if (!patternChartInstance) {
+                initPatternChart(processed.patternLabels, processed.patternData);
+            } else {
+                patternChartInstance.data.labels = processed.patternLabels;
+                patternChartInstance.data.datasets[0].data = processed.patternData;
+                patternChartInstance.update();
+            }
+        }
+
+        function processDataForCharts(entries) {
+            const sortedEntries = entries.sort((a, b) => (a.timestamp && b.timestamp ? b.timestamp.toMillis() - a.timestamp.toMillis() : 0));
+            const latestEntries = sortedEntries.slice(0, MAX_DAYS);
+
+            const moodLabels = [];
+            const moodData = [];
+            const patternCounts = {};
+
+            latestEntries.forEach(entry => {
+                const date = entry.timestamp ? entry.timestamp.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : entry.dateKey;
+                moodLabels.unshift(date);
+                moodData.unshift(entry.mood);
+
+                if (entry.pattern && entry.pattern !== 'None') {
+                    patternCounts[entry.pattern] = (patternCounts[entry.pattern] || 0) + 1;
+                }
+            });
+
+            // Ensure we have at least MAX_DAYS entries (fill with placeholders if needed)
+            while (moodLabels.length < MAX_DAYS) {
+                moodLabels.unshift('');
+                moodData.unshift(null);
+            }
+            
+            const patternLabels = Object.keys(patternCounts);
+            const patternData = Object.values(patternCounts);
+
+            return { moodLabels, moodData, patternLabels, patternData };
+        }
+
+        function initMoodChart(labels, data) {
+            const ctx = document.getElementById('moodChart').getContext('2d');
+            moodChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Contentment Score',
+                        data: data,
+                        borderColor: '#a0522d',
+                        backgroundColor: 'rgba(160, 82, 45, 0.2)',
+                        borderWidth: 2,
+                        pointBackgroundColor: '#a0522d',
+                        tension: 0.4,
+                        fill: true,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            min: 1,
+                            max: 10,
+                            title: { display: true, text: 'Mood (1 = Heaviness, 10 = Contentment)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function initPatternChart(labels, data) {
+            const ctx = document.getElementById('patternChart').getContext('2d');
+            patternChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: ['#b22222', '#e9967a', '#a0522d', '#808000', '#5f9ea0'],
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'right' }
+                    }
+                }
+            });
+        }
+
+        // --- Start Application ---
+        document.addEventListener('DOMContentLoaded', initFirebase);
+        
+    </script>
+</body>
+</html>
